@@ -37,23 +37,41 @@ Mandatory-or-optional facts to state in plain Chinese at the start (verified 202
 
 Wizard steps (ask exactly one at a time; scripts in Chinese you can copy):
 
-- W1 Account. Ask: "你有 Cloudflare 账号吗?没有的话,打开 dash.cloudflare.com 注册一个(邮箱+密码就行,免费),注册好回我一句 好了 。" Wait. If they have one: "好,你先在浏览器登录 dash.cloudflare.com,登录好回我 好了 。" You cannot click their browser for them unless a logged-in connector/tool is already available in session; if an API token / MCP connector is already authorized for their account in this session, say so and use it, otherwise ask them to either (a) confirm the browser is logged in and tell you, for dashboard-guided steps, or (b) create a scoped API token (Workers/KV edit, this account only) and paste it. Validate: token paste must not be echoed back in full by you; store it only as a credential, never in files that ship.
-- W2 Route choice. Ask: "用哪种地址?1) 免费地址(推荐,零成本,形如 cf-node.你的账号.workers.dev) 2) 你自己的域名(你已经有绑在 Cloudflare 上的域名才选)。回 1 或 2。" If 2, ask for the root domain only, validate it is a plausible hostname and (when you have account access) that an active zone with that name exists; pick a fresh subdomain together (suggest `cf-node.<ROOT>`, check no DNS record and no Worker domain already uses it; if conflict, suggest `cf-node2`, never overwrite). If 1, the hostname is decided after W3: `https://<WORKER_NAME>.<ACCOUNT_SUBDOMAIN>.workers.dev`; ask for nothing more.
-- W3 Worker name. Auto-suggest, do not make them invent: "我给这个空间起名叫 cf-node,可以吗?想要别的名字回我一个小写英文名。" Validate: lowercase letters/digits/hyphens only, and (with account access) not already taken; on conflict append a digit and re-confirm. Never reuse an existing Worker name.
-- W4 ADMIN password. Ask: "给管理面板想一个密码:至少 12 位,别用你其他地方用过的。现在发我,我只存进本机密钥文件和 Cloudflare 密钥里,不会写进教程或仓库。" Validate length >= 12 (reject shorter, ask again). Never echo it back in full, never put it in chat summaries or delivered documents.
-- W5 UUID. Do not ask. Say: "节点编号(UUID)我自动生成,你不用管。" Generate a fresh UUIDv4 yourself and treat it as a secret like the password.
-- W6 Client. Ask: "你最后用什么上网?小火箭 Shadowrocket / Clash / sing-box / v2rayN,回名字就行,不确定就回 小火箭。" This only chooses the first test format; the subscription itself is the same.
-- W7 Region choice. Run Section 0B and do not skip it.
+Before W1, you MUST send the operator ONE heads-up card first, as a single message, before asking anything else. Use this card verbatim (fill nothing in):
+
+```text
+先花30秒看完, 然后我们一步一步来:
+一共6步, 每步我只问一句, 你回一句就行, 部署的活我来做, 不用你动手。
+必需: 一个免费的 Cloudflare 账号。没有的话先用邮箱注册, 有的话登录就行。
+不必需: 域名。先用 Cloudflare 免费送的 workers.dev 地址就能跑通, 有域名以后也可以再绑。
+你要准备: 能注册或登录的邮箱, 想一个面板密码, 选一个想要的国家或地区, 最后用手机客户端扫码。
+全程你只做四件事: 1) 注册或登录, 2) 回数字或贴回我需要的值, 3) 选国家或地区, 4) 最后扫码验收。
+预计耗时: 通常几分钟到十几分钟, 这是估计, 主要取决于注册、登录验证和你的回复速度, 不保证固定时间。
+说明: 我只能尽量把入口偏向你选的国家或地区, 不能承诺任意国家的IP, 最后以实测出口为准, 你点头才算定。
+```
+
+Progress prefix rule (mandatory): every wizard question must start with "第X/6步". Mapping is fixed: W1 = 第1/6步, W2 = 第2/6步, W3 = 第3/6步, W4 = 第4/6步, W6 = 第5/6步, W7 (region, Section 0B) = 第6/6步(选地区). W5 UUID is NOT a step and gets no number: it is an auto-generated item, mentioned only as a note inside 第5/6步 before the client question (see W5 below). Follow-up questions inside the same W item keep the same prefix. Work you execute after the wizard (deploy, verify, QR) is not numbered as a wizard step.
+
+Compact 3-step summary variant: if the operator says "太长" or "简单点", you may compress the presentation into three dialogue beats: (1) CF账号好了吗 + 用免费地址还是域名, (2) 密码 + 客户端 + 想要的国家, (3) 扫码验收. This compression is presentation only: inside each beat you must still ask, wait for, and validate every gate item in Sections 0, 0A and 0B in order (login method, route and any hostname value, Worker name confirmation, ADMIN length, UUID auto-generation notice, client target, region choice and operator acceptance). Never skip a question, a format check, or the region acceptance loop just because the beats are grouped. If an answer is missing or invalid, stay in that beat and ask again with the same 第X/6步 prefix.
+
+
+- W1 Account. Ask: "第1/6步: 你有 Cloudflare 账号吗?没有的话,打开 dash.cloudflare.com 注册一个(邮箱+密码就行,免费),注册好回我一句 好了 。" Wait. If they have one: "第1/6步: 好,你先在浏览器登录 dash.cloudflare.com,登录好回我 好了 。" You cannot click their browser for them unless a logged-in connector/tool is already available in session; if an API token / MCP connector is already authorized for their account in this session, say so and use it, otherwise ask them to either (a) confirm the browser is logged in and tell you, for dashboard-guided steps, or (b) create a scoped API token (Workers/KV edit, this account only) and paste it. Validate: token paste must not be echoed back in full by you; store it only as a credential, never in files that ship.
+- W2 Route choice. Ask: "第2/6步: 用哪种地址?1) 免费地址(推荐,零成本,形如 cf-node.你的账号.workers.dev) 2) 你自己的域名(你已经有绑在 Cloudflare 上的域名才选)。回 1 或 2。" If 2, ask for the root domain only, validate it is a plausible hostname and (when you have account access) that an active zone with that name exists; pick a fresh subdomain together (suggest `cf-node.<ROOT>`, check no DNS record and no Worker domain already uses it; if conflict, suggest `cf-node2`, never overwrite). If 1, the hostname is decided after W3: `https://<WORKER_NAME>.<ACCOUNT_SUBDOMAIN>.workers.dev`; ask for nothing more.
+- W3 Worker name. Auto-suggest, do not make them invent: "第3/6步: 我给这个空间起名叫 cf-node,可以吗?想要别的名字回我一个小写英文名。" Validate: lowercase letters/digits/hyphens only, and (with account access) not already taken; on conflict append a digit and re-confirm. Never reuse an existing Worker name.
+- W4 ADMIN password. Ask: "第4/6步: 给管理面板想一个密码:至少 12 位,别用你其他地方用过的。现在发我,我只存进本机密钥文件和 Cloudflare 密钥里,不会写进教程或仓库。" Validate length >= 12 (reject shorter, ask again). Never echo it back in full, never put it in chat summaries or delivered documents.
+- W5 UUID. Not a step, do not count or number it. As a note inside 第5/6步, before the W6 client question, say: "顺带说明(不算一步): 节点编号(UUID)我自动生成,你不用管。" Generate a fresh UUIDv4 yourself and treat it as a secret like the password.
+- W6 Client. After the W5 note, ask: "第5/6步: 你最后用什么上网?小火箭 Shadowrocket / Clash / sing-box / v2rayN,回名字就行,不确定就回 小火箭。" This only chooses the first test format; the subscription itself is the same.
+- W7 Region choice. This is 第6/6步(选地区). Run Section 0B and do not skip it; its R1 question and R4 decision prompt carry the 第6/6步(选地区) prefix.
 - Then execute Sections 2, 6, 7, 9, 10 yourself. At the end deliver only: admin URL, subscription URL, QR image, and the region verification result from W7. If any step fails twice, stop and report the exact screen/error in plain Chinese instead of improvising fixes on live resources.
 
 ## 0B. Region choice: the operator decides (mandatory step)
 
 Honesty rule (say this verbatim in substance): "优选IP可以把入口尽量偏向你选的国家/地区,但不能保证、更不能承诺任意国家的住宅IP。最后出口是哪儿,以实测出口IP的归属地为准;我测出来告诉你,你说行才算定,你说不行我们就换一个再测。"
 
-Step R1 Ask (multi-select allowed for up to 3 regions): "你想要哪个国家/地区的出口?常见:美国、日本、新加坡、韩国、香港、台湾、英国、德国。也可以回你想的其它国家,或回 多个:美国,日本 这样最多选三个。"
+Step R1 Ask (multi-select allowed for up to 3 regions): "第6/6步(选地区): 你想要哪个国家/地区的出口?常见:美国、日本、新加坡、韩国、香港、台湾、英国、德国。也可以回你想的其它国家,或回 多个:美国,日本 这样最多选三个。"
 Step R2 Source candidates for each requested region using Section 7 rules (curated lists you can re-test, or the code random generator as fallback). Never silently substitute a different region's candidates when the list is empty: tell the operator "这个地区我暂时没找到能测的入口,要么换地区,要么先用随机入口试", and let them choose.
 Step R3 Test each candidate: (a) Section 7 TCP/TLS probe; (b) end-to-end exit verification, in this order of preference: (i) if you can run a local VLESS client (for example xray-core) on your box, build a one-node client config from the candidate URI, route a request through it to an IP-geolocation lookup, and record actual exit country/city and colo; (ii) otherwise ask the operator to import the single candidate node on their phone, open an IP-lookup page, and paste back the country/city shown. Record requested region vs actual exit country/city per candidate. A candidate whose actual exit disagrees with the request is "未命中", not a success to be relabelled.
-Step R4 Operator decides, loop: report "你选的是 X,实测出口是 Y(城市 Z)。1) 就用这个 2) 换下一个候选再测 3) 换个国家。回数字。" Loop back to R3 or R1 until the operator accepts. Never end the build on an unaccepted region mismatch.
+Step R4 Operator decides, loop: report "第6/6步(选地区): 你选的是 X,实测出口是 Y(城市 Z)。1) 就用这个 2) 换下一个候选再测 3) 换个国家。回数字。" Loop back to R3 or R1 until the operator accepts. Never end the build on an unaccepted region mismatch.
 Step R5 Write only accepted candidates into ADD.txt (Section 7 write path), set the node label to the ACTUAL verified exit region, re-fetch the subscription, and record in the Final Delivery Checklist: requested region(s), accepted candidate label(s), actual exit country/city per candidate, verification method (local client or phone), and date. The default random-IP mode has no region choice at all: if the operator cares about region, random mode is only a pipeline smoke test, never the delivery.
 
 
