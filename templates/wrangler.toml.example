@@ -1,0 +1,16 @@
+# Copy to wrangler.toml, replace placeholders, then: npx wrangler deploy
+# SECRETS HYGIENE: never put real ADMIN/UUID/KEY values in this file.
+# After deploy, set them with: npx wrangler secret put ADMIN (etc.)
+name = "cf-node"
+main = "_worker.js"
+compatibility_date = "2026-10-08"
+keep_vars = true
+
+[[kv_namespaces]]
+binding = "KV"
+id = "<KV_NAMESPACE_ID>"
+
+# Non-secret variables only:
+[vars]
+HOST = "<YOUR_DOMAIN>"
+# PROXYIP, BEST_SUB, GO2SOCKS5, PATH: leave unset on first build (SKILL.md Section 3.2)

@@ -1,0 +1,6 @@
+# One entry per line: <ENTRY_IP_OR_DOMAIN>:<PORT>#<REGION LABEL>
+# ALL values below are placeholders and will NOT connect. Replace only with entries that passed SKILL.md Section 7 liveness + end-to-end tests.
+# Note: ADD.txt is read only after panel config "本地IP库.随机IP" is set to false; it is NOT auto-created by the Worker.
+<ENTRY_IP_1>:443#Example Region A
+<ENTRY_DOMAIN_1>:443#Example Region B
+<ENTRY_IP_2>:8443#Example Region C
