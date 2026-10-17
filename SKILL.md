@@ -32,7 +32,7 @@ If the operator is non-technical, do NOT hand them Section 6 to execute. Run thi
 Mandatory-or-optional facts to state in plain Chinese at the start (verified 2026-10-17):
 
 - "Cloudflare 账号:必须要。这是整套东西的地基,没有账号就没有 Worker 和 KV,搭不了。注册免费。"
-- "域名:不必须。先用 Cloudflare 免费送的 workers.dev 地址就能跑通;域名只是更好记、在有些网络下更稳的可选项。你已经有绑在 Cloudflare 上的域名,我们就用一个新子域名;没有也完全不耽误。"
+- "域名:不必须,但有就优先用。你已经有绑在 Cloudflare 上的域名,我们就优先绑一个新子域名当正式地址;没有域名也可以先用 Cloudflare 免费送的 workers.dev 地址部署,但要先说清:workers.dev 在中国大陆网络上常见整批节点在 TLS/WS 握手阶段超时(面板和订阅在浏览器里能打开不代表节点能连),这时不要承诺能用,按排障步骤绑自定义域名再重发订阅。"
 - Do NOT say any specific free-domain registrar is available today unless you verified it in this session. If the operator wants a domain and has none, default to workers.dev and offer "以后再绑域名" as a later step. Never require buying anything.
 
 Wizard steps (ask exactly one at a time; scripts in Chinese you can copy):
@@ -43,7 +43,7 @@ Before W1, you MUST send the operator ONE heads-up card first, as a single messa
 先花30秒看完, 然后我们一步一步来:
 一共6步, 每步我只问一句, 你回一句就行, 部署的活我来做, 不用你动手。
 必需: 一个免费的 Cloudflare 账号。没有的话先用邮箱注册, 有的话登录就行。
-不必需: 域名。先用 Cloudflare 免费送的 workers.dev 地址就能跑通, 有域名以后也可以再绑。
+不必需: 域名。有绑在 Cloudflare 上的域名优先用它当正式地址; 没有就先用 workers.dev 免费地址, 但大陆网络下它常见整批节点超时, 能部署不等于手机一定能连, 到时绑域名重发订阅再测。
 你要准备: 能注册或登录的邮箱, 想一个面板密码, 选一个想要的国家或地区, 最后用手机客户端扫码。
 全程你只做四件事: 1) 注册或登录, 2) 回数字或贴回我需要的值, 3) 选国家或地区, 4) 最后扫码验收。
 预计耗时: 通常几分钟到十几分钟, 这是估计, 主要取决于注册、登录验证和你的回复速度, 不保证固定时间。
@@ -56,7 +56,7 @@ Compact 3-step summary variant: if the operator says "太长" or "简单点", yo
 
 
 - W1 Account. Ask: "第1/6步: 你有 Cloudflare 账号吗?没有的话,打开 dash.cloudflare.com 注册一个(邮箱+密码就行,免费),注册好回我一句 好了 。" Wait. If they have one: "第1/6步: 好,你先在浏览器登录 dash.cloudflare.com,登录好回我 好了 。" You cannot click their browser for them unless a logged-in connector/tool is already available in session; if an API token / MCP connector is already authorized for their account in this session, say so and use it, otherwise ask them to either (a) confirm the browser is logged in and tell you, for dashboard-guided steps, or (b) create a scoped API token (Workers/KV edit, this account only) and paste it. Validate: token paste must not be echoed back in full by you; store it only as a credential, never in files that ship.
-- W2 Route choice. Ask: "第2/6步: 用哪种地址?1) 免费地址(推荐,零成本,形如 cf-node.你的账号.workers.dev) 2) 你自己的域名(你已经有绑在 Cloudflare 上的域名才选)。回 1 或 2。" If 2, ask for the root domain only, validate it is a plausible hostname and (when you have account access) that an active zone with that name exists; pick a fresh subdomain together (suggest `cf-node.<ROOT>`, check no DNS record and no Worker domain already uses it; if conflict, suggest `cf-node2`, never overwrite). If 1, the hostname is decided after W3: `https://<WORKER_NAME>.<ACCOUNT_SUBDOMAIN>.workers.dev`; ask for nothing more.
+- W2 Route choice. Ask: "第2/6步: 用哪种地址?你有已经绑在 Cloudflare 上的域名就回 2(优先,正式地址用你的子域名);没有域名回 1(免费地址,形如 cf-node.你的账号.workers.dev,零成本先部署,但大陆网络下常见整批节点握手超时,我不能先承诺手机能连,真超时就绑域名重发订阅)。回 1 或 2。" If 2, ask for the root domain only, validate it is a plausible hostname and (when you have account access) that an active zone with that name exists; pick a fresh subdomain together (suggest `cf-node.<ROOT>`, check no DNS record and no Worker domain already uses it; if conflict, suggest `cf-node2`, never overwrite). If 1, the hostname is decided after W3: `https://<WORKER_NAME>.<ACCOUNT_SUBDOMAIN>.workers.dev`; ask for nothing more, and record that the workers.dev timeout risk was stated to the operator before delivery.
 - W3 Worker name. Auto-suggest, do not make them invent: "第3/6步: 我给这个空间起名叫 cf-node,可以吗?想要别的名字回我一个小写英文名。" Validate: lowercase letters/digits/hyphens only, and (with account access) not already taken; on conflict append a digit and re-confirm. Never reuse an existing Worker name.
 - W4 ADMIN password. Ask: "第4/6步: 给管理面板想一个密码:至少 12 位,别用你其他地方用过的。现在发我,我只存进本机密钥文件和 Cloudflare 密钥里,不会写进教程或仓库。" Validate length >= 12 (reject shorter, ask again). Never echo it back in full, never put it in chat summaries or delivered documents.
 - W5 UUID. Not a step, do not count or number it. As a note inside 第5/6步, before the W6 client question, say: "顺带说明(不算一步): 节点编号(UUID)我自动生成,你不用管。" Generate a fresh UUIDv4 yourself and treat it as a secret like the password.
@@ -104,6 +104,7 @@ If hash, version header, or size differ: STOP. Do not deploy. Report the three o
 - Custom Domain / workers.dev hostname = how requests reach the Worker. It is the `url.hostname` of the incoming request.
 - `HOST` env = node hostname(s) written into generated nodes. Code: `hosts` = parsed `env.HOST` list if set, else `[url.hostname]`; `host = hosts[0]` (L36-37). On every config load, `config_JSON.HOSTS` is overwritten from `env.HOST` (L5725) and the subscription generator shuffles HOSTS and substitutes them into node URIs (L470-483). `HOST` does not create DNS and does not attach a domain to the Worker.
 - First-build rule: set `HOST` to exactly the public hostname from gate item 3 (custom subdomain, or the full workers.dev hostname). A HOST that does not resolve to this Worker breaks TLS SNI/host matching in generated nodes (consequence of L36-37 plus the URI template in Section 5; treat any other combination as advanced multi-host setup).
+- Canonical-host preference (field lesson, 2026-10-17): if the operator has any usable domain on an active Cloudflare zone, prefer/bind a Custom Domain (placeholder `node.example.com`) and use it as canonical `HOST`/SNI. `workers.dev` (placeholder `https://<WORKER_NAME>.<account>.workers.dev`) is enough to deploy and the panel/subscription can open in a browser, but as node `host`/`sni` on mainland China networks it commonly/likely causes ALL nodes to timeout at the TLS/WS handshake — swapping in preferred entry IPs does not fix it, because the entry IP changes while SNI/host stays `workers.dev`. If the operator has no domain, proceed on `workers.dev` but set that expectation up front and do not promise phone connectivity; the fix path is the troubleshooting row in Section 9. Changing the canonical host changes the token (Section 4), so the fix invalidates the old subscription URL and QR and all three must be re-issued.
 - `UUID`: if `env.UUID` is a valid UUIDv4 it is used lowercased; otherwise the Worker derives a UUID-shaped value from `MD5MD5(ADMIN + KEY)` (L30-35). Pin an explicit generated UUID for a first build so changing the password does not silently rotate every node.
 - Subscription token uses `host`, i.e. `HOST` first entry or the request hostname (Section 4). Visiting the same Worker under a different hostname yields a different token and different node hostnames. Pick one canonical hostname and use it everywhere.
 
@@ -185,7 +186,7 @@ Precondition: Section 0 gate passed. Placeholders below are replaced with operat
 3. Worker -> Edit code: replace all code with the verified `_worker.js`, Deploy. A truncated paste shows up later as error 1101; file size in the editor should correspond to 5,142,235 bytes.
 4. Settings -> Variables and Secrets: secrets `ADMIN`, `UUID`, `KEY` (if used); plain var `HOST` = gate-3 hostname. Leave `PROXYIP`, `BEST_SUB`, `GO2SOCKS5`, `PATH` unset. Deploy if prompted.
 5. Storage & Databases -> KV -> Create namespace (e.g. `cf-node-kv`). Worker -> Settings -> Bindings -> Add -> KV Namespace: variable name exactly `KV` (case-sensitive), select the namespace, Deploy.
-6. Hostname: for a custom domain, Worker -> Settings -> Domains & Routes -> Add -> Custom Domain `node.<YOUR_DOMAIN>`, wait until Active. For workers.dev, confirm the URL `https://<WORKER_NAME>.<YOUR_SUBDOMAIN>.workers.dev` answers. One canonical hostname only for the first build (Section 3.1).
+6. Hostname: prefer a custom domain when the operator has any usable domain: Worker -> Settings -> Domains & Routes -> Add -> Custom Domain `node.<YOUR_DOMAIN>`, wait until Active, and use it as canonical `HOST`. For workers.dev, confirm the URL `https://<WORKER_NAME>.<YOUR_SUBDOMAIN>.workers.dev` answers, but treat that only as "deployed", not as "nodes will connect on mainland networks" (Section 3.1 warning). One canonical hostname only for the first build (Section 3.1).
 7. First login: open `https://<HOST>/login`, sign in with `ADMIN`, land on `/admin`. This first authenticated load (and the first subscription fetch) triggers config initialisation (Section 8). Fetch GET `/admin/config.json` and record: UUID matches gate value, HOST/HOSTS match canonical hostname, TOKEN present (this is your Section 4 token, do not publish it).
 8. Preferred IPs: decide random vs curated now (Section 7) before sharing anything. Default config generates 16 random Cloudflare-CIDR entries per subscription fetch, so node lists will differ between fetches until you switch to a curated `ADD.txt`.
 9. Get the subscription URL (Section 4) from the panel, run the base64 verification (Section 5), then Sections 9-10 for client import and QR delivery.
@@ -244,6 +245,8 @@ PY
 2. Write only passing lines to `ADD.txt`, save through the panel (POST `/admin/ADD.txt`) or KV editor. No Worker redeploy is needed for an ADD.txt-only change.
 3. Re-fetch the subscription, base64-verify (Section 5), and connect-test each new node in the client (Section 9). A TCP-open entry can still be a wrong-region or dead forward; only the end-to-end test counts. Drop failures instead of retrying them into the list.
 
+Anti-dump rule (mandatory): preferred IPs must be probed server-side first (steps 1-3 above) before any QR is handed over. Never ship only 1 direct-only node, and never ship an unverified preferred-IP batch and ask the operator to "test each one" as the primary debugging method. The operator's phone test is the final acceptance check (Section 9), not your liveness probe; if you could not run the server-side probes, say so explicitly and label the batch unverified instead of presenting it as done.
+
 Never publish a working `ADD.txt` together with your subscription URL; together they hand out your node.
 
 ## 8. KV keys: what the code auto-creates (and what it does not)
@@ -262,6 +265,8 @@ Practical consequence: an empty KV after deploy is expected. Do not pre-create `
 
 ## 9. Verification (all six before delivery)
 
+Deployer self-verification before handing over the QR (mandatory, do not outsource to the operator): subscription fetches as a client would, the Section 5 decode shows the expected UUID / canonical host / `sni` / `path`, panel login works, and you have attempted every TLS/WS handshake check available to you server-side (Section 7 probes; a local VLESS client check per Section 0B R3 when available). Only after that may you ask the operator for one phone acceptance test. Shipping unverified nodes and asking the operator to try them one by one is a delivery failure, not a test plan.
+
 1. Panel: `https://<HOST>/admin` loads after login; `/admin/config.json` shows your UUID, canonical HOST/HOSTS, and TOKEN.
 2. Subscription: Section 5 base64 check passes; node count and labels match `ADD.txt` line count (or 16 random entries if still on random mode); every URI matches the Section 5 shape.
 3. End-to-end: client connected through one node, open an IP-lookup page; exit shows Cloudflare network addresses. Any source claiming a residential exit from this setup is wrong.
@@ -279,7 +284,8 @@ Troubleshooting quick table:
 | `/sub` returns nothing or auth fails | Wrong token: wrong host or UUID input to `MD5MD5(host + userID)` | Use the panel-copied URL; cross-check TOKEN in `/admin/config.json` (Section 4) |
 | Browser shows plain text, client says bad subscription | Mozilla UA got the non-base64 variant (L486) | Fetch with client UA or `b64`/`base64` query flag; re-run Section 5 |
 | Clash/sing-box fails, mixed works | External converter backend down (L457-467) | Deliver `mixed` first; retry target formats later; do not debug the Worker |
-| All nodes timeout | Dead entries, dead forced `PROXYIP`, or workers.dev blocked (last one: guess, network-dependent) | Confirm `PROXYIP` is unset, re-run Section 7 liveness, attach a custom domain |
+| All nodes timeout, panel/subscription open in browser, another CF node works on same phone/network | First suspect (likely, field-verified pattern): canonical `HOST`/SNI is a `workers.dev` bare domain and mainland carriers block/throttle that SNI/host at TLS/WS handshake; preferred IPs do not help because SNI/host is unchanged | Bind a Custom Domain (placeholder `node.example.com`), set `HOST` to it, re-issue subscription + QR (token changes with host, old QR is invalid), then re-test. Only after that check next suspects: UUID mismatch between subscription and Worker, wrong `path`, DNS not proxied/resolving to this Worker |
+| All nodes timeout (custom domain already in use) | Dead entries, dead forced `PROXYIP`, or UUID/path/DNS mismatch | Confirm `PROXYIP` is unset, re-run Section 7 liveness, cross-check decoded UUID/host/sni/path against Section 5 |
 | Nodes differ every refresh | Still on random preferred IPs (default) | Section 7 step 2: set `随机IP` false and save a curated `ADD.txt` |
 | Wrong country flag | Entry forwards to another colo | Section 9 item 4; fix label or drop entry |
 
@@ -316,6 +322,7 @@ Clash / sing-box / v2rayN: import the same URL; the server selects format by tar
 
 - [ ] Admin URL: `https://<HOST>/admin` (login tested with operator `ADMIN`)
 - [ ] Subscription URL: `https://<HOST>/sub?token=<TOKEN>` (full string delivered privately, not in a public file)
+- [ ] Canonical host: custom domain `<HOST>` preferred; if `workers.dev`, the mainland timeout-all risk was told to the operator and the bind-custom-domain fix was left as the stated next step (changing host changes token and invalidates the old QR)
 - [ ] QR image: `<ABSOLUTE_PATH_TO_QR_PNG>` (decode check: match = True / phone scan tested)
 - [ ] Node count and regions: `<N>` nodes; labels `<LABEL_LIST>`; random mode or curated ADD.txt (state which)
 - [ ] Region choice (Section 0B): requested `<REGION(S)>`; accepted labels `<LABEL(S)>`; actual verified exit `<COUNTRY/CITY>` per accepted node; method local-client or phone; operator accepted on `<DATE>`
