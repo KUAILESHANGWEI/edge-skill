@@ -1,0 +1,6 @@
+SECRETS*
+*.local.*
+sub-url.txt
+*.png
+_worker.js
+wrangler.toml
