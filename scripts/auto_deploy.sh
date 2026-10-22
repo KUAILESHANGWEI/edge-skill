@@ -16,6 +16,11 @@ SHA=1e84d11af0544654bf56a06fa833e77184a57193288a9ffccf62c031a9fb7d65
 WR="npx -y wrangler@4"
 mkdir -p "$WORK"; chmod 700 "$WORK"; cd "$WORK"
 say(){ printf '\n== %s\n' "$*"; }
+# 账号 API 帮助函数(用 wrangler 的登录态拿 token;不打印 token)
+acct_id(){ $WR whoami 2>/dev/null | grep -oE '[0-9a-f]{32}' | head -1; }
+cf_api(){ local tok; tok=$($WR auth token 2>/dev/null | tail -1); curl -fsS -X "$1" -H "Authorization: Bearer $tok" "https://api.cloudflare.com/client/v4/accounts/${ACCT:=$(acct_id)}$2"; }
+# 不依赖 `wrangler deployments list --name`(各版本参数不一致):直接查脚本是否存在
+worker_exists(){ cf_api GET "/workers/scripts/$1/settings" >/dev/null 2>&1; }
 
 say "1/9 下载并校验上游 edgetunnel(钉版 $PIN)"
 [ -f _worker.js ] || curl -fsSL -o _worker.js "https://raw.githubusercontent.com/cmliu/edgetunnel/$PIN/_worker.js"
@@ -27,16 +32,31 @@ $WR whoami >/dev/null
 
 say "3/9 起名(撞名自动加数字,绝不覆盖已有 Worker)"
 if [ "$UPGRADE" = "1" ]; then
-  $WR deployments list --name "$NAME" >/dev/null 2>&1 || { echo "UPGRADE=1 但找不到 Worker $NAME,停止"; exit 1; }
+  worker_exists "$NAME" || { echo "UPGRADE=1 但找不到 Worker $NAME,停止"; exit 1; }
   echo "升级模式:沿用已有 Worker(不改名、不换 UUID)"
+  say "3b/9 升级前备份(回滚用):脚本 + KV 关键键 → $WORK/backup-$NAME-$(date +%Y%m%d%H%M%S)"
+  BK="$WORK/backup-$NAME-$(date +%Y%m%d%H%M%S)"; mkdir -p "$BK"; chmod 700 "$BK"
+  cf_api GET "/workers/scripts/$NAME/content/v2" > "$BK/script.multipart" || { echo "脚本备份失败,停止(不在没有回滚点时升级)"; exit 1; }
+  cf_api GET "/workers/scripts/$NAME/settings" > "$BK/settings.json" || true
+  cf_api GET "/workers/scripts/$NAME/schedules" > "$BK/schedules.json" || true
+  [ -s "$BK/script.multipart" ] || { echo "脚本备份为空,停止"; exit 1; }
+  echo "备份完成: $BK(回滚:Dashboard → Worker → 部署 → 回滚到上一个版本,或用 settings.json 里的 KV id 恢复 ADD.txt)"
 else
   base="$NAME"; i=1
-  while $WR deployments list --name "$NAME" >/dev/null 2>&1; do i=$((i+1)); NAME="$base$i"; done
+  while worker_exists "$NAME"; do i=$((i+1)); NAME="$base$i"; done
 fi
 echo "Worker 名: $NAME"
 
-say "4/9 建 KV(已存在同名则复用,幂等)"
-KVID=$($WR kv namespace list 2>/dev/null | python3 -c 'import sys,json
+say "4/9 建 KV(已存在同名则复用,幂等;升级模式用线上 Worker 实际绑定的 KV)"
+KVID=""
+if [ "$UPGRADE" = "1" ]; then
+  KVID=$(cf_api GET "/workers/scripts/$NAME/settings" | python3 -c 'import sys,json
+b=json.load(sys.stdin)["result"]["bindings"]; k=[x["namespace_id"] for x in b if x.get("type")=="kv_namespace" and x.get("name")=="KV"]
+print(k[0] if len(k)==1 else "")')
+  [ -n "$KVID" ] || { echo "升级模式:线上 Worker 没有名为 KV 的 KV 绑定,停止(不新建空 KV)"; exit 1; }
+  echo "沿用线上 KV: $KVID"
+fi
+[ -n "$KVID" ] || KVID=$($WR kv namespace list 2>/dev/null | python3 -c 'import sys,json
 try: L=json.load(sys.stdin)
 except Exception: L=[]
 print(next((x["id"] for x in L if x.get("title")==sys.argv[1]),""))' "$NAME-kv" || true)
@@ -137,18 +157,58 @@ for ip,p,lab in cand[:40]:
     if len(ok)>=10: break
 print("\n".join(ok))
 PY
+# v4.1:候选池优先放"可测"的第三方反代IP —— 用 SNI=HOST 做 TLS 握手,证书确是本节点的才收
+: > POOL.relay.txt
+# v4.2 CF_ONLY=1(默认):不用第三方反代IP。反代运营者能看到你的源IP、目标和流量时间;想要更多可测节点再设 CF_ONLY=0
+[ "${CF_ONLY:-1}" = "0" ] && python3 - "$HOST" <<'PY2' > POOL.relay.txt || true
+import sys,re,subprocess,urllib.request,concurrent.futures as cf
+host=sys.argv[1]; L=[]
+for s in ["https://raw.githubusercontent.com/cmliu/WorkerVless2sub/main/addressesapi.txt",
+          "https://raw.githubusercontent.com/ymyuuu/IPDB/main/bestproxy.txt",
+          "https://raw.githubusercontent.com/ymyuuu/IPDB/main/proxy.txt"]:
+    try: t=urllib.request.urlopen(s,timeout=15).read().decode("utf-8","ignore")
+    except Exception: continue
+    for l in t.splitlines()[:80]:
+        m=re.match(r"\s*(\d+\.\d+\.\d+\.\d+)(?::(\d+))?(?:#(.*))?",l)
+        if m: L.append((m[1],int(m[2] or 443),(m[3] or "PROXY").strip()))
+def ok(e):
+    try:
+        o=subprocess.run(["timeout","6","openssl","s_client","-connect",f"{e[0]}:{e[1]}","-servername",host],input="",capture_output=True,text=True).stdout
+        return e if host.split(".",1)[-1] in o else None
+    except Exception: return None
+with cf.ThreadPoolExecutor(20) as x: R=[e for e in x.map(ok,L) if e]
+print("\n".join(f"{i}:{p}#{l}" for i,p,l in R[:100]))
+PY2
+if [ -s POOL.relay.txt ]; then cat POOL.relay.txt POOL.txt 2>/dev/null > POOL.new && mv POOL.new POOL.txt; echo "候选池:$(wc -l < POOL.relay.txt) 个已验证反代IP + CF官方兜底"; fi
+# v4.2:混合端口。给前 3 个 CF 官方 IP 各加一个 2053/8443/2083 变体(CF 免费版支持的 HTTPS 端口;域名条目在非 443 端口实测不通,只加 IP)
+if [ -s ADD.txt ] && [ "${MIX_PORTS:-1}" = "1" ]; then
+  python3 - <<'PY2'
+import re
+L=[l for l in open("ADD.txt").read().splitlines() if l.strip()]
+ips=[l.split(":")[0] for l in L if re.match(r"\d+\.\d+\.\d+\.\d+:443#",l)][:3]
+extra=[f"{ip}:{p}#CF-{p}" for ip,p in zip(ips,[2053,8443,2083])]
+open("ADD.txt","w").write("\n".join(L+extra))
+PY2
+fi
+# v4.2:用户已置顶(PINNED.txt 非空)时,升级不覆盖 ADD.txt —— 置顶条目是在用户真实网络里验证过的
+PINNED_NOW=$($WR kv key get --namespace-id "$KVID" PINNED.txt --remote 2>/dev/null | grep -c ':' || true)
+if [ "${PINNED_NOW:-0}" -gt 0 ] && [ "$UPGRADE" = "1" ]; then echo "检测到 $PINNED_NOW 条置顶节点,保留现有 ADD.txt"; : > ADD.txt; fi
 if [ -s ADD.txt ]; then
   $WR kv key put --namespace-id "$KVID" ADD.txt --path ADD.txt --remote >/dev/null
   [ -s POOL.txt ] && $WR kv key put --namespace-id "$KVID" POOL.txt --path POOL.txt --remote >/dev/null
-  $WR kv key get --namespace-id "$KVID" config.json --remote > config.json
-  python3 - <<'PY'
-import json
-c=json.load(open("config.json")); c["优选订阅生成"]["本地IP库"]["随机IP"]=False
-json.dump(c,open("config.json","w"),ensure_ascii=False)
-PY
-  $WR kv key put --namespace-id "$KVID" config.json --path config.json --remote >/dev/null
   echo "已写入 $(wc -l < ADD.txt) 个优选IP(本机探活;不等于用户运营商实测)"
 else echo "没筛到可用优选IP,保持默认随机模式(能用,但节点会变)"; fi
+# 配置调优(0-RTT/分片/固定IP库)不论是否写 ADD.txt 都做
+$WR kv key get --namespace-id "$KVID" config.json --remote > config.json
+python3 - <<'PY'
+import json
+c=json.load(open("config.json")); c["优选订阅生成"]["本地IP库"]["随机IP"]=False
+import os
+if os.environ.get("CN_TUNE","1")=="1":   # v4.2 默认:上游原生选项 0-RTT(path 带 ?ed=2560) + 小火箭 TLS 分片;中国移动 5G 实测必需
+  c["启用0RTT"]=True; c["TLS分片"]="Shadowrocket"
+json.dump(c,open("config.json","w"),ensure_ascii=False)
+PY
+$WR kv key put --namespace-id "$KVID" config.json --path config.json --remote >/dev/null
 fi
 
 [ "$HEAL" = "1" ] && echo "自愈已开:Cron \"$HEAL_CRON\" 每次探测 ADD.txt,坏的从 POOL.txt 补。查看: https://$HOST/heal-status?key=<你的UUID>"
