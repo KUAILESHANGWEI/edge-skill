@@ -1,4 +1,4 @@
-# CF 全球边缘节点 Skill(v4 · 通用 Agent 全自动 + 自愈版)
+# CF 全球边缘节点 Skill(v4.2 · 通用 Agent 全自动 + 自愈版)
 
 **任何带终端+浏览器的 AI**(Gemini 4 Argon / Antigravity、ChatGPT Agent、Claude Code、Cursor、Grok Bot…)都能照着从零搭出 Cloudflare 免费节点,直接交出小火箭订阅二维码。**你只需要登录 Cloudflare 点一下 Allow**,别的全交给 AI。不用买机场,不怕跑路,全程免费。
 
@@ -11,6 +11,74 @@
 https://github.com/free-dam-man/cf-global-edge-node-skill
 全部用默认值，只用免费额度，别问我问题，也别问密码。我只负责在浏览器里登录 Cloudflare 点 Allow，其余你自己跑完并自测。
 ```
+
+## v4.2 改了什么(中国移动 5G 实测修好)
+
+- **事故经过(真实)**:一个用户节点升级 v4 后,iPhone 小火箭在中国移动 5G 下 10 个节点全部超时。从 Cloudflare 侧和美国 VPS 用 xray 真连全部正常;国内多地拨测(globalping.io,中国移动 AS9808 等)显示域名 DNS 正常、HTTPS 200、优选IP 的 443 端口都通 —— **不是域名被封、不是 DNS 污染、不是 IP 被封**,问题在 VLESS-WS 这层流量本身。
+- **用户实测有效的修法**(2026-10-23 01:27 北京时间,中国移动 5G,16 个节点里 14 个通,延迟约 520–960 ms):
+  1. 开上游原生的 **0-RTT**(`config.json` 的 `启用0RTT: true`,节点 path 变成 `/?ed=2560`);
+  2. 开上游原生的 **小火箭 TLS 分片**(`TLS分片: "Shadowrocket"`,节点带 `fragment=1,40-60,30-50,tlshello`);
+  3. **混合端口**:443 之外加 2053 / 8443 / 2083(CF 免费版支持的 HTTPS 端口)。注意:优选**域名**在非 443 端口实测不通,只给 IP 加端口变体。
+  4. 两个第三方反代 IP(日本、PX 各一)在国内实测超时,已删,也不置顶 —— 反代能在 CF 侧握手≠国内能用。
+- `auto_deploy.sh` 默认就这样配(`CN_TUNE=1`、`MIX_PORTS=1`,都可设 0 关掉),只改上游 `config.json` 原生选项,不改上游代码。
+- **CF-only(v4.2 默认开)**:`CF_ONLY=1`(部署脚本)/ `HEAL_CF_ONLY`(Worker 变量,默认 1)—— 节点只用 Cloudflare 自有 IP,巡检**永不**加入第三方反代 IP 或域名,并会移除非 CF、未置顶的条目。**隐私取舍**:第三方反代 IP 是陌生人的服务器,它能看到你的真实源 IP、连到哪个节点域名、流量时间和大小(内容仍是 TLS 加密);好处是 CF 侧能探活、Cron 能自动换掉死的。CF 自有 IP 没这个风险,代价是 Cron 测不了(CF Worker 连不了 CF 自己的 IP 段),只能靠你在自己网络里试 + 置顶。想要可测反代,自己设 `CF_ONLY=0` 并知情接受。
+- **用户最终决定的节点列表**(2026-10-23,只留 CF 自有 IP,全部置顶;标签去掉"CN"免得小火箭显示中国国旗):11 个 = 5 个 CF IP × 443 + 6 个 2053/8443/2083 端口变体。实测数据:同组 16 个节点里,中国移动 5G 下 14 个通(约 520–960 ms),超时的两个都是第三方反代;随后用户决定连能用的第三方反代(新加坡一个)和两个优选域名也一并移除。
+- **置顶(pin)**:KV `PINNED.txt`(每行 `host:port`)或 `ADD.txt` 备注里带 `pin` 的条目,Cron 永不删除、永不替换。用户在自己网络里验证过的节点就该置顶。升级时检测到置顶,脚本不覆盖 `ADD.txt`。
+- **巡检只删"能测且确认死"的条目**:CF 官方 IP 和所有域名(可能解析到 CF)一律"无法验证",不删。
+- **实话**:Cron 跑在 Cloudflare 机房,**看不到国内运营商侧的阻断**。巡检全绿≠国内能用;国内能不能用,只能在用户自己的网络里试。
+
+## 可选:AI 每日国内侧筛选(两层自愈)
+
+**两层,说实话:**
+- **第一层 CF Cron(一直在跑)**:免费、无需任何 Agent,但它跑在 Cloudflare 机房,**看不到国内运营商的阻断**,而且测不了 CF 自有 IP(Worker 连不了 CF 段)。它只负责"不删置顶、不加第三方、不把列表写空"。
+- **第二层 AI 每日国内筛选(可选)**:让任意能定时跑任务、能联网发 HTTP 请求的 Agent(Grok Bot、Muse、Gemini 定时任务等)每天跑一次,用 **Globalping**(免费公共拨测网络,无需注册)从中国大陆探针(优先中国移动 AS9808)测 CF 自有 IP,只把国内能连通的写回 KV。它**看得到国内**,但需要有个 Agent 持续在跑;Agent 停了就退回第一层。
+- 订阅链接不变:只改 KV 里的 `ADD.txt` / `PINNED.txt`,不动 Worker、UUID、HOST。
+- 局限:拨测只测 TCP 443/2053/8443/2083 连通,通≠代理一定好用;最终仍以你手机实测为准。Globalping 匿名额度有限,每天一次足够。
+
+**复制给 Agent 的定时任务提示词**(把尖括号换成你自己的,别把 UUID 发到聊天里):
+
+```text
+每天 1 次(北京时间 09:00)。目标:我的 Cloudflare Worker 节点 <WORKER名> 的 KV <KV命名空间ID> 里,
+ADD.txt / PINNED.txt 只保留"从中国大陆能连通"的 Cloudflare 自有 IP。
+1. 读 KV 的 ADD.txt,再加候选:Cloudflare 官方 IPv4 段内的优选 IP(如 cloudflare.com/ips-v4 里的 104.16.0.0/13、172.64.0.0/13、162.159.0.0/16 中你已知好用的),只收 CF 自有 IP,不收第三方反代 IP、不收域名。
+2. 对每个 IP:端口,调用 POST https://api.globalping.io/v1/measurements,
+   type=ping, measurementOptions={protocol:"TCP",port:<端口>,packets:3},
+   locations=[{magic:"AS9808",limit:3}](不足时退到 {country:"CN",limit:3});GET 结果直到 status=finished。
+3. 判定:≥2 个国内探针丢包<100% 记为可达。按国内平均延迟排序,保留最多 12 条,每个 IP 最多 1 个非 443 端口变体。
+4. 若可达条目 <3 条:不写入,只报告(防止拨测故障把列表写空)。
+5. 写入前先备份旧 ADD.txt/PINNED.txt(KV 键 ADD.bak.txt / PINNED.bak.txt)。ADD.txt 用纯文本写入(每行 IP:端口#US-CF-序号,标签不要带 CN),PINNED.txt 每行 IP:端口。
+6. 不改 Worker 代码、不改 UUID/变量、不删其他 KV 键;不在报告里打印 UUID 或订阅 token。
+7. 报告:保留/移除了哪些条目和国内延迟,提醒我在小火箭里"更新订阅"。
+```
+
+## 排查:中国移动下所有节点超时
+
+按顺序做,前面的成本最低:
+1. 小火箭「更新订阅」,确认节点 path 是 `/?ed=2560`、带 `fragment` 参数(v4.2 默认)。
+2. 换 2053/8443/2083 端口的节点试。
+3. 小火箭升到最新版;有人反馈更新后要把 TLS 密钥交换改成支持 X25519MLKEM768(nodeseek post-977144)。
+4. Wi-Fi 能用、5G 不能 → 运营商封了节点域名(edgetunnel issue #1221 作者答复),换一个别的主域下的自定义域名;换 IP/端口没用。
+5. 还不行 → 上游选项换 XHTTP 传输(nodeseek post-977144 有人反馈移动网下更好),配合新域名。
+6. ECH 先别开:有冷启动连不上的报告(edgetunnel issue #1291)。
+
+依据:edgetunnel CHANGELOG(2026-05-29 起中国移动直连降为单路拨号;2026-07-11 新增 `TCP_CONCURRENT_DIAL`)、edgetunnel issues #1221 / #1291 / #1206(0-RTT、分片选项说明)、nodeseek post-977144(2026-10 小火箭移动网超时讨论)、以及上面这次用户实测。
+
+## 解决问题的方法(本包的做法)
+
+1. **先搜**:上游仓库 CHANGELOG / issues、论坛(nodeseek 等)近一个月有没有同样的现象和已验证的解法。
+2. **再推理**:分层排除 —— DNS → TCP 443 → HTTPS → 代理协议层;用国内多地拨测(globalping 等)代替猜测。
+3. **在用户真实环境里实测**:CF 侧/海外测通不算数,以用户的运营商和客户端为准。
+4. **小步迭代**:每次只改一两个上游原生选项,先备份,保持订阅链接不变,测完再改下一步;把用户验证过的结果固化(置顶 + 默认配置)。
+
+## v4.1 改了什么(让自愈真正干活)
+
+- **v4 的实话**:实测一个真实用户节点,`ADD.txt` 10 条全是 Cloudflare 官方 IP,Worker 一条都测不了(unverifiable 10),等于没在自愈。v4.1 修的就是这个。
+- **候选池换成可测的第三方反代 IP**:默认先拉 `cmliu/WorkerVless2sub` 的 `addressesapi.txt`(edgetunnel 作者维护)和 `ymyuuu/IPDB` 的 `bestproxy.txt`/`proxy.txt`,CF 官方优选清单只作兜底。部署时本机会用 SNI=你的域名做 TLS 握手,只把真能转到你节点的反代 IP 写进 `POOL.txt`。
+- **探测更严**:不只看 TCP 能连,还发带 SNI 的 TLS ClientHello,必须收到 TLS 握手回包才算活。CF 官方段直接标"无法验证",不浪费探测次数。
+- **优先可测条目**:`ADD.txt` 至少保留 5 条可测的反代 IP;不够就用活的反代 IP 替换掉末尾的 CF 官方 IP(CF 官方 IP 仍保留一部分,不删光);补不满时用 CF 官方优选兜底,节点数不缩水。
+- `/heal-status` 新增 `probed`、`testable_alive`、`replaced_unverifiable` 字段。
+- `auto_deploy.sh`:升级前自动备份脚本/设置/Cron;升级时用线上 Worker 实际绑定为 `KV` 的命名空间(不再按名字猜,找不到就停);不再依赖 `wrangler deployments list --name`。
+- 仍然的限制:反代 IP 是第三方的,能握手≠国内三网一定快;探测在 CF 机房跑。CF 官方 IP 依旧测不了。
 
 ## v4 改了什么(自愈)
 
@@ -36,6 +104,7 @@ https://github.com/free-dam-man/cf-global-edge-node-skill
 - **地区不对**:优选IP只能偏向某地区,出口永远是 Cloudflare,不是住宅IP。让 AI 换地区重跑优选步骤。
 - **优选IP失效/节点越来越慢**:v4 会自动巡检替换;想立刻刷新就让 AI 重跑脚本第 8 步。看巡检结果:`https://<你的地址>/heal-status?key=<你的UUID>`。
 - **报 1027**:免费额度一天 10 万次用完,北京时间早上 8 点(UTC 0 点)重置。
+- **workers.dev 地址报 1101**:实测同一账号下所有 Worker(包括没升级 v4 的)的 workers.dev 地址同时报 1101,自定义域名正常,不是 v4 导致的;订阅走自定义域名即可。
 - **报 1101**:让 AI 删掉本次新建的 Worker 重建,密钥改用 Dashboard 添加。
 
 ---
