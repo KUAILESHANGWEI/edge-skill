@@ -4,10 +4,13 @@
 # 其余全部由本脚本完成。所有密钥/订阅只写进 $WORK(包外目录),绝不写进本仓库。
 # 可选环境变量:NAME(默认 edge-node) DOMAIN(已在CF激活的域名的子域,如 edge-node.<YOUR_DOMAIN>)
 #               REGION(优选地区国家码,如 US/JP/SG/HK,默认不筛) PREFERRED(1=写入优选IP,默认1)
+# v4:          HEAL(1=开启 Cron 自愈,默认1) HEAL_CRON(默认 "*/20 * * * *")
+#               UPGRADE=1 + NAME=<已有Worker名>:原地升级老节点(同 Worker/同 KV/同 UUID → 订阅链接不变)
 set -euo pipefail
 PKG="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="${WORK:-$HOME/cf-edge-work}"; NAME="${NAME:-edge-node}"; DOMAIN="${DOMAIN:-}"
 REGION="${REGION:-}"; PREFERRED="${PREFERRED:-1}"
+HEAL="${HEAL:-1}"; HEAL_CRON="${HEAL_CRON:-*/20 * * * *}"; UPGRADE="${UPGRADE:-0}"
 PIN=66f1c51c4ecee058b959104cb0517e073cdb1213
 SHA=1e84d11af0544654bf56a06fa833e77184a57193288a9ffccf62c031a9fb7d65
 WR="npx -y wrangler@4"
@@ -23,24 +26,37 @@ $WR whoami 2>/dev/null | grep -qi "associated with the email\|Account ID" || $WR
 $WR whoami >/dev/null
 
 say "3/9 起名(撞名自动加数字,绝不覆盖已有 Worker)"
-base="$NAME"; i=1
-while $WR deployments list --name "$NAME" >/dev/null 2>&1; do i=$((i+1)); NAME="$base$i"; done
+if [ "$UPGRADE" = "1" ]; then
+  $WR deployments list --name "$NAME" >/dev/null 2>&1 || { echo "UPGRADE=1 但找不到 Worker $NAME,停止"; exit 1; }
+  echo "升级模式:沿用已有 Worker(不改名、不换 UUID)"
+else
+  base="$NAME"; i=1
+  while $WR deployments list --name "$NAME" >/dev/null 2>&1; do i=$((i+1)); NAME="$base$i"; done
+fi
 echo "Worker 名: $NAME"
 
-say "4/9 建 KV"
-KVID=$($WR kv namespace create "$NAME-kv" 2>&1 | grep -oE '[0-9a-f]{32}' | head -1)
+say "4/9 建 KV(已存在同名则复用,幂等)"
+KVID=$($WR kv namespace list 2>/dev/null | python3 -c 'import sys,json
+try: L=json.load(sys.stdin)
+except Exception: L=[]
+print(next((x["id"] for x in L if x.get("title")==sys.argv[1]),""))' "$NAME-kv" || true)
+[ -n "$KVID" ] || KVID=$($WR kv namespace create "$NAME-kv" 2>&1 | grep -oE '[0-9a-f]{32}' | head -1)
 [ -n "$KVID" ] || { echo "KV 创建失败"; exit 1; }
 
 say "5/9 自动生成 UUID 与面板密码(只存本机 $WORK/SECRETS.local.json)"
-[ -f SECRETS.local.json ] || python3 - <<'PY'
+if [ "$UPGRADE" = "1" ] && [ ! -f SECRETS.local.json ]; then
+  echo "升级模式:本机没有 SECRETS.local.json → 不生成新 UUID、不改密钥(线上 UUID 保持原样,订阅不变)"; KEEP_SECRETS=1; fi
+[ -n "${KEEP_SECRETS:-}" ] || [ -f SECRETS.local.json ] || python3 - <<'PY'
 import json,uuid,secrets,os
 json.dump({"ADMIN":secrets.token_urlsafe(18),"UUID":str(uuid.uuid4())},open("SECRETS.local.json","w"))
 os.chmod("SECRETS.local.json",0o600)
 PY
 
+MAIN=_worker.js
+if [ "$HEAL" = "1" ]; then cp "$PKG/templates/heal_entry.js" heal_entry.js; MAIN=heal_entry.js; fi
 write_toml(){ cat > wrangler.toml <<T
 name = "$NAME"
-main = "_worker.js"
+main = "$MAIN"
 compatibility_date = "2026-10-08"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
@@ -50,6 +66,8 @@ binding = "KV"
 id = "$KVID"
 T
 [ -n "${1:-}" ] && printf '[vars]\nHOST = "%s"\n' "$1" >> wrangler.toml
+[ -n "$REGION" ] && [ -n "${1:-}" ] && printf 'HEAL_REGION = "%s"\n' "$REGION" >> wrangler.toml
+[ "$HEAL" = "1" ] && printf '[triggers]\ncrons = ["%s"]\n' "$HEAL_CRON" >> wrangler.toml
 [ -n "$DOMAIN" ] && printf '[[routes]]\npattern = "%s"\ncustom_domain = true\n' "$DOMAIN" >> wrangler.toml
 true; }
 
@@ -59,11 +77,15 @@ OUT=$($WR deploy 2>&1 | tee deploy.log)
 WD=$(echo "$OUT" | grep -oE "https://$NAME\.[a-z0-9-]+\.workers\.dev" | head -1 | sed 's#https://##')
 HOST="${DOMAIN:-$WD}"; [ -n "$HOST" ] || { echo "没拿到地址,看 deploy.log"; exit 1; }
 write_toml "$HOST"; $WR deploy >>deploy.log 2>&1
-$WR secret bulk SECRETS.local.json >>deploy.log 2>&1
+[ -n "${KEEP_SECRETS:-}" ] || $WR secret bulk SECRETS.local.json >>deploy.log 2>&1
 echo "HOST=$HOST"
 
+if [ -n "${KEEP_SECRETS:-}" ]; then
+  echo "升级完成:订阅链接与之前完全相同(HOST+UUID 未变),小火箭里点「更新订阅」即可。单节点链接用户才需重扫。"
+  PREFERRED_ONLY=1; fi
 say "7/9 自验:面板与订阅"
 sleep 8
+if [ -z "${PREFERRED_ONLY:-}" ]; then
 code=$(curl -s -o /dev/null -w '%{http_code}' "https://$HOST/login" || true)
 echo "/login -> $code"
 if [ "$code" != "200" ]; then
@@ -85,6 +107,7 @@ L=[l for l in d.splitlines() if l.startswith("vless://")]
 assert L and u in d and sys.argv[1] in d, "订阅解码不对:UUID/HOST 不匹配"
 print("订阅OK,节点数",len(L))
 PY
+fi
 
 if [ "$PREFERRED" = "1" ]; then
 say "8/9 优选IP:拉社区清单→按地区筛→TLS探活→冻结≤10个写入KV"
@@ -104,6 +127,7 @@ for s in src:
         if reg and reg not in lab.upper(): continue
         cand.append((m.group(1),int(m.group(2) or 443),lab))
     if cand: break
+open("POOL.txt","w").write("\n".join(f"{i}:{p}#{l}" for i,p,l in cand[:200]))
 ok=[]; ctx=ssl.create_default_context()
 for ip,p,lab in cand[:40]:
     try:
@@ -115,6 +139,7 @@ print("\n".join(ok))
 PY
 if [ -s ADD.txt ]; then
   $WR kv key put --namespace-id "$KVID" ADD.txt --path ADD.txt --remote >/dev/null
+  [ -s POOL.txt ] && $WR kv key put --namespace-id "$KVID" POOL.txt --path POOL.txt --remote >/dev/null
   $WR kv key get --namespace-id "$KVID" config.json --remote > config.json
   python3 - <<'PY'
 import json
@@ -126,6 +151,8 @@ PY
 else echo "没筛到可用优选IP,保持默认随机模式(能用,但节点会变)"; fi
 fi
 
+[ "$HEAL" = "1" ] && echo "自愈已开:Cron \"$HEAL_CRON\" 每次探测 ADD.txt,坏的从 POOL.txt 补。查看: https://$HOST/heal-status?key=<你的UUID>"
+[ -n "${PREFERRED_ONLY:-}" ] && exit 0
 say "9/9 生成订阅二维码并解码校验"
 [ -x .venv/bin/python ] || { python3 -m venv .venv && .venv/bin/pip -q install "qrcode[pil]" opencv-python-headless; }
 SUB_URL="$SUB" .venv/bin/python "$PKG/templates/make_sub_qr.py" --output "$WORK/cf-subscription-qr.png"
