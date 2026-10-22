@@ -9,7 +9,7 @@ Build a personal Cloudflare edge node: a single-file Worker (edgetunnel, `_worke
 
 Goal state: the operator ends with (1) an admin panel URL they can log into, (2) a real subscription URL built exactly as the code builds it, (3) a scannable QR code image of that subscription URL, (4) at least one client that connected end-to-end. If any operator input below is missing, stop at the gate and ask. Do not invent accounts, domains, passwords, UUIDs, tokens, or results.
 
-## ★ 通用 Agent 全自动模式(v3 默认,任何带终端+浏览器的 AI 都照这一节做)
+## ★ 通用 Agent 全自动模式(v4 默认,含自愈;任何带终端+浏览器的 AI 都照这一节做)
 
 适用:Gemini 4 Argon(Antigravity 桌面版/CLI、AI Studio Build、Interactions API + `environment="remote"`)、ChatGPT Agent/Codex、Claude Code、Cursor、Grok Bot 等任何能跑终端命令、能开浏览器的 Agent。**不支持纯聊天无工具的 AI**:没有终端就如实说"我没法替你部署",不要假装做了。
 
@@ -32,9 +32,36 @@ Goal state: the operator ends with (1) an admin panel URL they can log into, (2)
 5. 交付只给三样:二维码图片、订阅链接(私下给)、面板地址+ADMIN 密码(私下给)。告诉用户:小火箭首页右上角扫码 → 添加订阅 → 下拉刷新 → 选节点连接;自己手机显示的二维码扫不了,就复制链接到小火箭「+ → 类型 Subscribe」粘贴。
 6. 收尾:请用户连上后打开 `https://www.cloudflare.com/cdn-cgi/trace` 看 `loc=`/`colo=`,作为最终验收。地区不满意 → 换 `REGION` 重跑第 8 步(脚本可重复执行,已存在的密钥会复用)。
 
+### v4 自愈(默认开启,全在用户自己的 CF 账号里,免费)
+
+- **固定订阅**:订阅地址 = 用户自己的 `https://<HOST>/sub?token=…`,token 只由 HOST+UUID 算出。只要 Worker 名/HOST/UUID 不变,链接永远不变;节点列表在用户自己的 KV `ADD.txt`。
+- **Cron 巡检**:脚本把入口换成 `templates/heal_entry.js`(包住上游 `_worker.js`,上游代码不改),并加 `[triggers] crons = ["*/20 * * * *"]`(`HEAL_CRON` 可改,建议 10–30 分钟)。每次:用 `cloudflare:sockets` 的 `connect()` 分批(6 并发)TCP 探测 `ADD.txt` → 死的删掉 → 从 KV `POOL.txt`(首次部署时本机写入的候选池;不够再拉社区公开清单)补到 10 个 → **只在有变化时**写回 `ADD.txt`;每次写 `HEAL_STATUS.json`。小火箭只需「更新订阅」。
+- **查看**:`https://<HOST>/heal-status?key=<UUID>`(不带正确 key 直接走上游,不泄露任何信息)。
+- **关掉**:`HEAL=0 UPGRADE=1 NAME=<Worker名> bash scripts/auto_deploy.sh`,或 Dashboard → Worker → Settings → Triggers 删 Cron。
+
+#### 老用户升级(同一个订阅链接)
+
+`UPGRADE=1 NAME=<已有Worker名> bash scripts/auto_deploy.sh`(当初绑了自定义域名的再加 `DOMAIN=…`)。脚本:沿用同名 Worker、复用同名 KV `<NAME>-kv`(按标题查找,找不到才新建)、本机没有 `SECRETS.local.json` 就**不生成新 UUID、不重写密钥**(`keep_vars=true` 保留 Dashboard 里的变量)→ 订阅链接不变,用户在小火箭点「更新订阅」即可。**只有当初导入的是单条 `vless://` 节点链接(不是订阅)的人才需要重新扫码。** 老节点若是 Dashboard 建的、KV 绑定名不是 `KV`,先在 Dashboard 确认绑定名为 `KV` 再升级。
+
+#### 免费版限制(2026-10-22 查官方 Workers limits / TCP sockets 文档,复用前再核)
+
+| 项 | 免费额度 | 本包做法 |
+|---|---|---|
+| Cron Triggers | 每账号 5 个 | 只用 1 个 |
+| 子请求 | 50/次调用 | 每次最多探测 40 个 + ≤2 次拉清单 |
+| 并发出站连接 | 6/次调用 | 6 个一批 |
+| CPU | 10 ms/次(等网络不算) | 仅文本处理 |
+| KV 写 | 1000/天 | `ADD.txt` 仅变化时写;状态 20 分钟一次 ≈72/天 |
+
+**硬限制(如实告诉用户)**:Workers **不允许 `connect()` 到 Cloudflare 自家 IP 段**,而很多优选IP正是 104.16.x 等 CF 段 → 这类会被标为 `unverifiable` 并**保留不删**;巡检真正能判死活的是"反代 CF 的第三方 IP"和域名条目。另外探测是从 CF 机房发起的 TCP 连通,不等于用户本地运营商实测;CF 段 IP 的地区质量仍以本机第 8 步 TLS 探活 + 用户 `cdn-cgi/trace` 为准。
+
+#### 可选(仅文档,默认不做):VPS / PaaS 自愈
+
+需要用户**自己**在对应平台生成最小权限 API Token,由用户在 Dashboard 填为 Worker **Secret**(`wrangler secret put`,Agent 不经手、不进仓库、不进聊天)。Cron 里探测该节点,挂了就调平台 API:VPS 换公网 IP/重启实例、PaaS 触发重部署,然后改写 KV 里对应条目,订阅链接仍不变。注意各平台 AUP(很多 PaaS 禁止代理用途)和 API 速率限制;未实现、未测试,仅作方向。
+
 ### 不可违反
 
-- 只用免费额度(Workers Free 10 万请求/天)。不买域名、不开付费套餐、不绑卡。
+- 只用免费额度(Workers Free 10 万请求/天;自愈只占 1 个 Cron)。不买域名、不开付费套餐、不绑卡。
 - 不记录、不回显、不提交用户的邮箱、UUID、域名、IP、令牌、订阅链接;仓库里只有占位符。
 - 不把 UUID/HOST 发给任何公共订阅生成/转换站;`BEST_SUB`、`PROXYIP` 留空。
 - 优选IP只能尽量偏向地区,出口始终是 Cloudflare,**不承诺住宅IP、不承诺任意国家**。

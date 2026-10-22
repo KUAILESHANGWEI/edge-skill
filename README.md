@@ -1,4 +1,4 @@
-# CF 全球边缘节点 Skill(v3 · 通用 Agent 全自动版)
+# CF 全球边缘节点 Skill(v4 · 通用 Agent 全自动 + 自愈版)
 
 **任何带终端+浏览器的 AI**(Gemini 4 Argon / Antigravity、ChatGPT Agent、Claude Code、Cursor、Grok Bot…)都能照着从零搭出 Cloudflare 免费节点,直接交出小火箭订阅二维码。**你只需要登录 Cloudflare 点一下 Allow**,别的全交给 AI。不用买机场,不怕跑路,全程免费。
 
@@ -11,6 +11,15 @@
 https://github.com/free-dam-man/cf-global-edge-node-skill
 全部用默认值，只用免费额度，别问我问题，也别问密码。我只负责在浏览器里登录 Cloudflare 点 Allow，其余你自己跑完并自测。
 ```
+
+## v4 改了什么(自愈)
+
+- **订阅链接固定不变**:还是你自己 workers.dev(或自定义域名)上的同一个 `/sub` 链接,节点列表在你自己的 KV。
+- **免费 Cron 自动巡检**(默认每 20 分钟):测 `ADD.txt` 里的优选IP,坏的自动从候选池换掉,写回 KV。小火箭只要「更新订阅」,不用重扫码。
+- 新增 `templates/heal_entry.js`(包住上游 `_worker.js`,上游一行不改);`auto_deploy.sh` 加 Cron、复用 KV、`UPGRADE=1` 原地升级。
+- **老用户**:`UPGRADE=1 NAME=<你的Worker名>` 重跑脚本,同一个 Worker、同一个 UUID → 订阅链接不变。只有当初导入**单条节点链接**的人才要重扫。
+- 限制实话:Workers 不能直接 TCP 探测 Cloudflare 自家 IP 段,这类优选IP只保留不判死;巡检能判的是第三方反代 IP 和域名条目。
+- 可选(仅文档):VPS/PaaS 用你自己的 API Token(存成 Worker Secret)自动换 IP/重部署。
 
 ## v3 改了什么
 
@@ -25,7 +34,7 @@ https://github.com/free-dam-man/cf-global-edge-node-skill
 
 - **连不上、全部超时**:大概率是 workers.dev 在大陆被卡。给 AI 一个已在 Cloudflare 激活的域名,让它绑子域名重发二维码(换优选IP没用)。
 - **地区不对**:优选IP只能偏向某地区,出口永远是 Cloudflare,不是住宅IP。让 AI 换地区重跑优选步骤。
-- **优选IP失效/节点越来越慢**:让 AI 重跑脚本第 8 步重新探活冻结。
+- **优选IP失效/节点越来越慢**:v4 会自动巡检替换;想立刻刷新就让 AI 重跑脚本第 8 步。看巡检结果:`https://<你的地址>/heal-status?key=<你的UUID>`。
 - **报 1027**:免费额度一天 10 万次用完,北京时间早上 8 点(UTC 0 点)重置。
 - **报 1101**:让 AI 删掉本次新建的 Worker 重建,密钥改用 Dashboard 添加。
 
@@ -91,6 +100,7 @@ v2 修订(2026-10-17,依独立实测 15 条意见):新增开工前 STOP-and-ask 
 | 文件 | 作用 |
 |---|---|
 | `SKILL.md` | Skill 本体:门禁、源码校验、变量与 HOST 关系、订阅/URI 公式、部署、优选 IP、验证、排障、二维码、交付清单 |
+| `templates/heal_entry.js` | v4 自愈入口:包住上游 `_worker.js`,加 Cron 巡检 ADD.txt / 候选池补位 / `/heal-status` |
 | `templates/wrangler.toml.example` | CLI 部署模板(密钥不进此文件,用 wrangler secret) |
 | `templates/ADD.txt.example` | 优选 IP 格式示例(占位符,不能直接用) |
 | `templates/env.example` | 变量清单(与 SKILL.md 第 3.2 节一致:首建 PROXYIP/BEST_SUB/GO2SOCKS5 留空) |
