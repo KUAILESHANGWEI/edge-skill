@@ -1,4 +1,37 @@
-# CF 全球边缘节点 Skill(可下载包 v2)
+# CF 全球边缘节点 Skill(v3 · 通用 Agent 全自动版)
+
+**任何带终端+浏览器的 AI**(Gemini 4 Argon / Antigravity、ChatGPT Agent、Claude Code、Cursor、Grok Bot…)都能照着从零搭出 Cloudflare 免费节点,直接交出小火箭订阅二维码。**你只需要登录 Cloudflare 点一下 Allow**,别的全交给 AI。不用买机场,不怕跑路,全程免费。
+
+## 一句口令开干
+
+复制给你的 AI:
+
+```text
+按这个仓库的 SKILL.md「★通用 Agent 全自动模式」，帮我在 Cloudflare 上搭一个免费节点，最后给我小火箭订阅二维码：
+https://github.com/free-dam-man/cf-global-edge-node-skill
+全部用默认值，只用免费额度，别问我问题，也别问密码。我只负责在浏览器里登录 Cloudflare 点 Allow，其余你自己跑完并自测。
+```
+
+## v3 改了什么
+
+- 新增「★ 通用 Agent 全自动模式」:默认零提问,用户只登录。
+- 新增 `scripts/auto_deploy.sh`:下载校验→wrangler 登录→建 Worker/KV→生成密钥→部署→自验→优选IP冻结→二维码,一条命令。
+- 新增 `AGENTS.md` / `GEMINI.md` / `CLAUDE.md`:各家 Agent 自动读取的入口说明。
+- 新增 `CREDITS.md`:上游 edgetunnel(GPL-2.0)等致谢;本包不分发 `_worker.js`。
+- 不再要求用户自己想面板密码、贴 API Token:密码/UUID 自动生成,只存本机。
+- 原来的六步向导保留,仅在用户要求"一步一步来"时使用。
+
+## 常见问题
+
+- **连不上、全部超时**:大概率是 workers.dev 在大陆被卡。给 AI 一个已在 Cloudflare 激活的域名,让它绑子域名重发二维码(换优选IP没用)。
+- **地区不对**:优选IP只能偏向某地区,出口永远是 Cloudflare,不是住宅IP。让 AI 换地区重跑优选步骤。
+- **优选IP失效/节点越来越慢**:让 AI 重跑脚本第 8 步重新探活冻结。
+- **报 1027**:免费额度一天 10 万次用完,北京时间早上 8 点(UTC 0 点)重置。
+- **报 1101**:让 AI 删掉本次新建的 Worker 重建,密钥改用 Dashboard 添加。
+
+---
+
+## 以下为 v2 原说明
 
 把一套 Cloudflare 全球边缘节点(Workers/Pages + KV 优选 IP)的搭建经验做成 AI Skill。新 Bot 只看这个 Skill,在操作者提供自己的 Cloudflare 账号/域名后,应能一路走到:真实订阅链接 + 可扫码的订阅二维码。
 

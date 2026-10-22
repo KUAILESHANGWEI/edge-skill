@@ -1,6 +1,6 @@
 ---
 name: cf-global-edge-node
-description: "Use when someone wants to build their own Cloudflare global edge node / CF-based proxy node from scratch, deploy an edgetunnel-style Worker or Pages node, configure KV preferred IPs (ADD.txt), produce a real subscription URL and scannable subscription QR code, import it into Shadowrocket, Clash, sing-box or v2rayN, or troubleshoot a CF node that connects but has no traffic, wrong region, or dead preferred IPs."
+description: "Universal (any AI agent with terminal+browser, incl. Gemini/Antigravity, ChatGPT, Claude) fully automated build. Use when someone wants to build their own Cloudflare global edge node / CF-based proxy node from scratch, deploy an edgetunnel-style Worker or Pages node, configure KV preferred IPs (ADD.txt), produce a real subscription URL and scannable subscription QR code, import it into Shadowrocket, Clash, sing-box or v2rayN, or troubleshoot a CF node that connects but has no traffic, wrong region, or dead preferred IPs."
 ---
 
 # CF Global Edge Node (Workers/Pages + KV Preferred IPs)
@@ -9,7 +9,39 @@ Build a personal Cloudflare edge node: a single-file Worker (edgetunnel, `_worke
 
 Goal state: the operator ends with (1) an admin panel URL they can log into, (2) a real subscription URL built exactly as the code builds it, (3) a scannable QR code image of that subscription URL, (4) at least one client that connected end-to-end. If any operator input below is missing, stop at the gate and ask. Do not invent accounts, domains, passwords, UUIDs, tokens, or results.
 
-## 0. Pre-flight gate (STOP and ask if anything is missing)
+## ★ 通用 Agent 全自动模式(v3 默认,任何带终端+浏览器的 AI 都照这一节做)
+
+适用:Gemini 4 Argon(Antigravity 桌面版/CLI、AI Studio Build、Interactions API + `environment="remote"`)、ChatGPT Agent/Codex、Claude Code、Cursor、Grok Bot 等任何能跑终端命令、能开浏览器的 Agent。**不支持纯聊天无工具的 AI**:没有终端就如实说"我没法替你部署",不要假装做了。
+
+用户全程只做一件事:**在弹出的浏览器里登录 Cloudflare 并点 Allow**(以及验证码/2FA,这些只有人能做)。其余所有事 Agent 自己做,全部用默认值,不再逐题问答。下面 0/0A/0B 节的六步向导仅在用户主动要求"一步一步来"时使用。
+
+### 开场(只发这一段,不提问)
+
+```text
+全程你只做一件事:等会儿浏览器弹出 Cloudflare 登录页,你登录(没账号就免费注册)并点"Allow"。
+其余我全自动:建 Worker、建 KV、生成密码和 UUID、配优选IP、出订阅链接和二维码、自测。
+默认用免费的 workers.dev 地址;大陆网络下它可能整批超时,真超时我再教你绑域名。
+```
+
+### 执行(Agent 自己跑)
+
+1. 能力自检:`node -v`、`python3 -V`、`curl --version`。缺什么自己装(Node ≥ 20)。在**包外**工作目录(默认 `~/cf-edge-work`)干活,不往本仓库写任何真实值。
+2. 一条命令跑完:`bash scripts/auto_deploy.sh`(可选环境变量:`DOMAIN=edge-node.<YOUR_DOMAIN>` 仅当用户主动给了一个已在 CF 激活的域名;`REGION=US/JP/SG/HK…` 仅当用户提了地区)。脚本步骤:钉版下载并 SHA-256 校验 edgetunnel → `wrangler login`(OAuth,用户点 Allow,**不要求用户贴 API Token,不问密码**)→ 自动起名防撞名 → 建 KV → 本地生成 UUID 与 ADMIN 密码 → `wrangler deploy` 拿 workers.dev 地址 → 写 HOST 重部署 → `secret bulk` → 自验 `/login` 与订阅 base64 解码 → 社区优选清单按地区筛、TLS 探活、冻结 ≤10 个写 KV `ADD.txt` 并关随机IP → 生成并解码校验二维码 PNG。
+3. 若 Agent 的环境是远程沙箱、`wrangler login` 的回调 localhost 到不了用户浏览器:改用 Agent 自己的浏览器打开登录链接,让用户在该浏览器会话里登录(Antigravity 桌面版、Claude Code、Cursor 本地运行时无此问题)。仍不行再退到:Agent 驱动 Dashboard 完成第 6 节各步。绝不让用户把密码/验证码发进聊天。
+4. 脚本任何一步失败:按第 9 节排障表处理一次;同一步失败两次就停,原样报错给用户。**只删除本次新建的 Worker/KV**,绝不碰账号里已有资源。
+5. 交付只给三样:二维码图片、订阅链接(私下给)、面板地址+ADMIN 密码(私下给)。告诉用户:小火箭首页右上角扫码 → 添加订阅 → 下拉刷新 → 选节点连接;自己手机显示的二维码扫不了,就复制链接到小火箭「+ → 类型 Subscribe」粘贴。
+6. 收尾:请用户连上后打开 `https://www.cloudflare.com/cdn-cgi/trace` 看 `loc=`/`colo=`,作为最终验收。地区不满意 → 换 `REGION` 重跑第 8 步(脚本可重复执行,已存在的密钥会复用)。
+
+### 不可违反
+
+- 只用免费额度(Workers Free 10 万请求/天)。不买域名、不开付费套餐、不绑卡。
+- 不记录、不回显、不提交用户的邮箱、UUID、域名、IP、令牌、订阅链接;仓库里只有占位符。
+- 不把 UUID/HOST 发给任何公共订阅生成/转换站;`BEST_SUB`、`PROXYIP` 留空。
+- 优选IP只能尽量偏向地区,出口始终是 Cloudflare,**不承诺住宅IP、不承诺任意国家**。
+- workers.dev 在大陆常见整批握手超时 → 唯一有效修复是绑自定义域名(第 3.4/9 节),换优选IP不管用;换 HOST 后令牌变,旧二维码作废,要重发。
+
+
+## 0. Pre-flight gate (仅手动/逐步向导模式;全自动模式用上面★节的默认值)
 
 Collect every item before touching Cloudflare. If an item is missing, output the missing list and stop. Do not proceed on assumptions, and never log into an account the operator did not explicitly hand over in this session.
 
