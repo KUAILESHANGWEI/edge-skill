@@ -2,7 +2,7 @@
 # SECRETS HYGIENE: never put real ADMIN/UUID/KEY values in this file.
 # After deploy, set them with: npx wrangler secret put ADMIN (etc.)
 name = "cf-node"
-main = "_worker.js"
+main = "heal_entry.js"   # v4: self-heal wrapper (imports ./_worker.js); use "_worker.js" to disable heal
 compatibility_date = "2026-10-08"
 keep_vars = true
 
@@ -14,3 +14,8 @@ id = "<KV_NAMESPACE_ID>"
 [vars]
 HOST = "<YOUR_DOMAIN>"
 # PROXYIP, BEST_SUB, GO2SOCKS5, PATH: leave unset on first build (SKILL.md Section 3.2)
+# HEAL_REGION = "US"   # optional: only refill from pool entries whose label contains this
+
+# v4 self-heal: one free Cron Trigger (free plan allows 5 per account)
+[triggers]
+crons = ["*/20 * * * *"]
