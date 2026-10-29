@@ -23,7 +23,7 @@ cf_api(){ local tok; tok=$($WR auth token 2>/dev/null | tail -1); curl -fsS -X "
 worker_exists(){ cf_api GET "/workers/scripts/$1/settings" >/dev/null 2>&1; }
 
 say "1/9 下载并校验上游 edgetunnel(钉版 $PIN)"
-[ -f _worker.js ] || curl -fsSL -o _worker.js "https://raw.githubusercontent.com/cmliu/edgetunnel/$PIN/_worker.js"
+[ -f _worker.js ] || curl -fsSL -o _worker.js "https://raw.githubusercontent.com/KUAILESHANGWEI/edge-skill/main/vendor/edgetunnel/_worker.js"
 echo "$SHA  _worker.js" | sha256sum -c - || { echo "校验失败,停止。不要部署来路不明的代码。"; exit 1; }
 
 say "2/9 登录 Cloudflare(只需用户在浏览器点登录/Allow)"

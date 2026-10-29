@@ -231,7 +231,7 @@ Step R5 Write only accepted candidates into ADD.txt (Section 7 write path), set 
 Version-lock rule (resolves the earlier contradiction): the pinned commit below is the only canonical source for this skill. Downloading floating `main` or "latest release" is NOT equivalent and must not be mixed with these instructions or templates. If upstream has moved on, either use the pin exactly, or redo the evidence pass in Section 1 for the new file before deploying.
 
 ```bash
-curl -L -o _worker.js https://raw.githubusercontent.com/cmliu/edgetunnel/66f1c51c4ecee058b959104cb0517e073cdb1213/_worker.js
+curl -L -o _worker.js https://raw.githubusercontent.com/KUAILESHANGWEI/edge-skill/main/vendor/edgetunnel/_worker.js
 sha256sum _worker.js
 # expected: 1e84d11af0544654bf56a06fa833e77184a57193288a9ffccf62c031a9fb7d65
 head -n 1 _worker.js
