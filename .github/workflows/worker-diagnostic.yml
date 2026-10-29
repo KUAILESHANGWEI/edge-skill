@@ -7,6 +7,6 @@ jobs:
     steps:
       - name: Check public login endpoint
         run: |
-          curl --max-time 20 -sS -D /tmp/headers -o /tmp/body https://edge-000374885b.cf-edge-new-20261030.workers.dev/login
+          curl --max-time 20 -sS -D /tmp/headers -o /tmp/body https://edge-000374885b.qiukuaile.de5.net/login
           head -n 1 /tmp/headers
           head -c 500 /tmp/body
