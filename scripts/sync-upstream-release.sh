@@ -21,7 +21,10 @@ if [ -z "$tag" ]; then
   exit 0
 fi
 mkdir "$tmp/assets"
-gh release download "$tag" --repo "$upstream" --dir "$tmp/assets"
+asset_count=$(gh api "repos/$upstream/releases/tags/$tag" --jq '.assets | length')
+if [ "$asset_count" -gt 0 ]; then
+  gh release download "$tag" --repo "$upstream" --dir "$tmp/assets"
+fi
 if ! gh release view "$tag" --repo "$target" >/dev/null 2>&1; then
   gh release create "$tag" --repo "$target" --title "$tag" --notes "Assets mirrored from $upstream."
 fi
